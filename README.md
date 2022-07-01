@@ -1,27 +1,27 @@
-# Compile MFC sources with Visual Studio 2019
-In previous versions of Visual Studio the bundled MFC source files could be compiled into a static library or a DLL. But since Visual Studio 2008 the necessary files to build MFC are not supplied anymore. In this article I show you how you can compile the MFC sources with Visual Studio 2019. The latest changes support <b>ARM64</b> too.
-# Introduction
-With the latest Visual C++ versions (since 2008) it is not possible anymore to compile the bundled MFC sources. The necessary files, ie makefiles like <b>atlmfc.mak</b> and a DEF file are not provided anymore
+# 用VS2019编译MFC源代码(Compile MFC sources with Visual Studio 2019)
+MFC源代码可以编译成私有的静态库或者DLL，本例支持 <b>ARM64</b> .
+# 介绍
+自从Visual C++ 版本 2008以后不再提供编译IDE绑定的MFC源代码，所需要的文件，比如 makefiles <b>atlmfc.mak</b> 和 DEF 文件不再提供。
 
-In a LOB software project I needed a x86 MFC DLL without the DAO database classes. With statically linked MFC, I provided my own versions of the DAO classes (which internally use MySQL) by overriding the <b>dao*.obj</b> files, but MFC object files cannot be overridden when using the DLL form of MFC. 
+作者因为需要一个无DAO类的x86 MFC DLL. 静态链接的方式，希望加入自己DAO类（兼容MySQL）, 这就需要覆盖目标文件 <b>dao*.obj</b> , 但是MFC object 文件不支持. 
 
-So I took the road to build my own MFC vcxproj files.
+因此需要构建自己的 MFC vcxproj 文件.
 
-The github project https://github.com/fobrs/MFC has all the necessary files to build the MFC sources as a DLL.
+本工程包含全部的必要文件来构建 MFC 源代码成 DLL.
 
-# Background, DEF file and LTCG
-The first hurdle was the missing DEF file. The MFC DLL exports its symbols via a provided Module Definition File or DEF file. The linker uses this DEF file to create the LIB file for the DLL. I couldn't use the old VC++ 2005 DEF file because the MFC feature pack added a lot of new functions.
+# 背景, DEF 文件和 LTCG(链接时代码生成)
+第一个拦路虎就是缺失 DEF 文件. MFC DLL 通过一个DEF(模块定义文件)来导出它的符号. 链接器使用该文件来从DLL创建LIB文件. 老的 VC++ 2005 倒是有 DEF 文件，但是新版MFC添加了很多新的特征功能.
 
-After some internet search I discovered the tool: <b>dumpexts.exe</b>.  I found the source code of it and modified it a little so it could create a DEF file for all the objs created by the compiler.
+通过研究后决定用工具: <b>dumpexts.exe</b>. 来自己生成一个DEF文件.
 
-The tool is run as a pre-link Build Event for the MFCDLL project. Because Visual Studio has no macro with a list of all obj files, a DOS command enumerates all obj files in the Intermediate directory before calling <b>dumpexts.exe</b>. Be sure to first clean the MFCDLL project so that no old obj files are hiding in it.
+此工具在 pre-link Build Event 时运行. 此时obj文件已经生成，dumpexts通过分析obj文件生成 DEF文件.
 
-When building the DLL the first time, be also sure Link Time Code Generation (LTCG) is not used. The object files the compiler generates when using LTCG cannot be read by <b>dumpexts.exe</b>. Luckilly when we once have generated a DEF file it can be used in a future LTCG build. 
+当首次构建 DLL 时, 要确保 LTCG(链接时代码生成)关闭. 因为使用LTCG的话生成的 object 文件就不能被 <b>dumpexts.exe</b> 识别. 不过产生完成DEF文件后LTCG是可以使用的. 
 
-# Using the code
-When you clone the github project, and run the Solution with Visual Studio 2019, a default wizard created MFC application is compiled and run but it uses the private MFC DLL!
+# 使用本代码
+克隆本工程, 使用vs2019打开解决方案, 一个私有的MFC DLL就可以使用了!
 
-To overcome copyright issues, the MFC source files are not included but read during compilation from the $(VCToolsInstallDir) folder. So no original MFC source files are included in the Solution except for one file: ctlpset.cpp. The original file gave a compiler error, so a fixed version is included.
+为了避免版权纠纷, MFC 源代码是编译时从目录 $(VCToolsInstallDir) 获取. 本工程并不提供，但有一个文件例外: ctlpset.cpp. 原来的文件会产生编译错误, 因此本工程包含了该文件.
 
 ```
 1>------ Build started: Project: MFCDLL, Configuration: Release Win32 ------
@@ -29,25 +29,25 @@ To overcome copyright issues, the MFC source files are not included but read dur
 1>C:\Program Files (x86)\Windows Kits\10\Include\10.0.18362.0\ucrt\corecrt_memcpy_s.h(50): error C4789: buffer 'var' of size 24 bytes will be overrun; 24 bytes will be written starting at offset 8
 1>Done building project "MFCDLL.vcxproj" -- FAILED.
 ```
-Apparently there are still bugs present in MFC after all those 28 years!
+错误在文件约395行的 sizeof(var), 修改为sizeof(var.llVal)!
 
-The current Character Set in the project configuration is set to UNICODE. If you use Multi Byte Character Set then the file <b>afxtaskdialog.cpp</b> is excluded from the built (unload and edit the project file to see this).
+当前的字符集配置为 UNICODE. 如果使用 Multi Byte Character Set 那么文件 <b>afxtaskdialog.cpp</b> 将被排除在外.
 
-In the original <b>mfcdll.mak</b> file the source file <b>dllmodul.cpp</b> is compiled twice with different flags. Therefore this file is copied to <b>dllmodulX.cpp</b> in the MFCstatic project. This project compiles a LIB file which needs to be linked to the exe which is using the MFC DLL.
+在MFC的静态库工程中，原始的文件 <b>mfcdll.mak</b> 中的文件 <b>dllmodul.cpp</b> 用不同的标志编译2次. 因此该文件被复制到文件 <b>dllmodulX.cpp</b> . 工程编译一个LIB文件，提供给使用MFC DLL的 可执行程序来链接(有点糊涂？).
 
-The MFCres project is a resource DLL which is a localization for German. Alltough it's use is not very well tested in this project.
+MFCres 工程是个德语资源 DLL . 但未充分测试.
 
-# Points of Interest
-One last point, which I don't understand. I needed to supply the /ENTRY point to all builds except the Release|Win32 build of the main application linker settings. It is set to <b>wWinMainCRTStartup</b> for UNICODE builds.
+# 其它
+作者不理解的是，需要修改IDE链接设定选项 /ENTRY 来指定程序入口才能完成构建(除了Release|Win32之外). UNICODE 模式被设定为 <b>wWinMainCRTStartup</b> .
 
 # ARM64
-For a successfull compilation for ARM64 the file <b>dispimpl_supporting.h</b> was reconstructed. <b>armasm.exe</b> is used on <b>objcall_.s</b> to create <b>objcall_.obj</b> This resolves the unknown symbols:
+为了成功编译 ARM64 文件 <b>dispimpl_supporting.h</b> 被重建. 在 <b>objcall_.s</b> 中 使用 <b>armasm.exe</b> 来创建 <b>objcall_.obj</b> 来解决未知符号的问题(unknown symbols):
 ```
  UNSUPPORTEDPLAT_PARAMS (_ARM64_PARAMS)
  UnsupportedplatParamsReset
  UnsupportedplatParamsAddFloat
  UnsupportedplatParamsAddDouble
  ```
-To test these functions an Active X Control is added (Circ) to test passing floats and doubles on ARM64. Open the Aboutbox and click 'Circle Active X control', then click outside the circle. Reg free COM is used to load the active X control when running the app. on ARM64 a MessageBox is shown if the float and double tests passes. The x86 version of circ.dll file has to be registered in an admin console with <b>regsvr32 circ.dll</b> before Visual Studio shows the control.
+为了测试 Active X Control 的功能，本例添加了 Circ 工程来测试ARM64的 floats 和 doubles 值. 打开APP的 Aboutbox 并点击  'Circle Active X control', 点击圆外边. 加载active X 控件使用无注册COM. 在 ARM64 , MessageBox 来显示传递 float 和 double. x86 版本的 circ.dll 必须以管理员来注册用 <b>regsvr32 circ.dll</b> .
 
-Before building for ARM64 please build first for x64 (Debug and Release). The x64 dumpexts.exe is used in the ARM64 build.
+构建 ARM64 前请先构建 dumpexts 的 x64 (Debug and Release)版本. 必须用 x64 dumpexts.exe 来构建 ARM64 MFC.
